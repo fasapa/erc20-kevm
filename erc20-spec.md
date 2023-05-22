@@ -213,14 +213,6 @@ module ERC20-SPEC
 ```
 
 ### Calling Approve works
-
--   Everything from `<mode>` to `<substate>` is boilerplate.
--   We are setting `<callData>` to `approve(SPENDER, AMOUNT)`.
--   We ask the prover to show that in all cases, we will end in `EVMC_SUCCESS` when `SENDER` or `OWNER` is not `address(0)`, and that we will end in `EVMC_REVERT` (rollback) when either one of them is.
--   We take the OWNER from the `<caller>` cell, which is the `msg.sender`.
--   The `<output>` should be `#buf(32, bool2Word(True))` if the function does not revert.
--   The storage locations for Allowance should be updated accordingly.
-
 ```k
     claim [approve.success]:
           <mode>     NORMAL   </mode>
@@ -232,7 +224,7 @@ module ERC20-SPEC
           <static>    false                                      </static>
 
           <id>         CONTRACT_ID       </id>
-          <caller>     OWNER             </caller>
+          <caller>     CALLER_ID         </caller>
           <localMem>   .Bytes      => ?_ </localMem>
           <memoryUsed> 0           => ?_ </memoryUsed>
           <wordStack>  .WordStack  => ?_ </wordStack>
@@ -240,9 +232,13 @@ module ERC20-SPEC
           <gas>        #gas(_VGAS) => ?_ </gas>
           <callValue>  0           => ?_ </callValue>
           <substate>
-            //<log> _:List ( .List => ListItem(#abiEventLog(CONTRACT_ID, "Approval", #indexed(#address(OWNER)), #indexed(#address(SPENDER)), #uint256(AMOUNT))) ) </log>
-            //...
-            _ => ?_
+            <log> // from substate
+              _:List (.List => ListItem(#abiEventLog(CONTRACT_ID, "Approval", #indexed(#address(CALLER_ID)), #indexed(#address(SPENDER)), #uint256(AMOUNT))))
+            </log>
+            <selfDestruct>     _       </selfDestruct>
+            <refund>           _ => ?_ </refund>
+            <accessedAccounts> _ => ?_ </accessedAccounts>
+            <accessedStorage>  _ => ?_ </accessedStorage>
           </substate>
 
           <callData>   ERC20.approve(SPENDER : address , AMOUNT : uint256) </callData>
@@ -256,49 +252,55 @@ module ERC20-SPEC
             ...
           </account>
 
-       requires ALLOWANCE_KEY ==Int #loc(ERC20._allowances[OWNER][SPENDER])
-        andBool #rangeAddress(OWNER) // necessary? Because it comes from <caller></caller>
+       requires ALLOWANCE_KEY ==Int #loc(ERC20._allowances[CALLER_ID][SPENDER])
+        andBool #rangeAddress(CALLER_ID) // necessary? Because it comes from <caller></caller>
         andBool #rangeAddress(SPENDER)
         andBool #rangeUInt(256, AMOUNT)
-        andBool OWNER =/=Int 0
+        andBool CALLER_ID =/=Int 0
         andBool SPENDER =/=Int 0
 ```
 
 ```k
-    // claim [approve.revert]:
-    //       <mode>     NORMAL   </mode>
-    //       <schedule> ISTANBUL </schedule>
+    claim [approve.revert]:
+          <mode>     NORMAL   </mode>
+          <schedule> ISTANBUL </schedule>
 
-    //       <callStack> .List                                      </callStack>
-    //       <program>   #binRuntime(ERC20)                         </program>
-    //       <jumpDests> #computeValidJumpDests(#binRuntime(ERC20)) </jumpDests>
-    //       <static>    false                                      </static>
+          <callStack> .List                                      </callStack>
+          <program>   #binRuntime(ERC20)                         </program>
+          <jumpDests> #computeValidJumpDests(#binRuntime(ERC20)) </jumpDests>
+          <static>    false                                      </static>
 
-    //       <id>         ACCTID      => ?_ </id>
-    //       <caller>     OWNER       => ?_ </caller>
-    //       <localMem>   .Bytes     => ?_ </localMem>
-    //       <memoryUsed> 0           => ?_ </memoryUsed>
-    //       <wordStack>  .WordStack  => ?_ </wordStack>
-    //       <pc>         0           => ?_ </pc>
-    //       <gas>        #gas(_VGAS) => ?_ </gas>
-    //       <callValue>  0           => ?_ </callValue>
-    //       <substate> _             => ?_ </substate>
+          <id>         CONTRACT_ID       </id>
+          <caller>     CALLER_ID         </caller>
+          <localMem>   .Bytes      => ?_ </localMem>
+          <memoryUsed> 0           => ?_ </memoryUsed>
+          <wordStack>  .WordStack  => ?_ </wordStack>
+          <pc>         0           => ?_ </pc>
+          <gas>        #gas(_VGAS) => ?_ </gas>
+          <callValue>  0           => ?_ </callValue>
+          <substate>
+            <log>              _       </log> // Since it will revert we don't expect changes to the log
+            <selfDestruct>     _       </selfDestruct>
+            <refund>           _ => ?_ </refund>
+            <accessedAccounts> _ => ?_ </accessedAccounts>
+            <accessedStorage>  _ => ?_ </accessedStorage>
+          </substate>
 
-    //       <callData>   ERC20.approve(SPENDER : address , AMOUNT : uint256) </callData>
-    //       <k>          #execute   => #halt ...        </k>
-    //       <output>     _          => ?_               </output>
-    //       <statusCode> _          => EVMC_REVERT      </statusCode>
+          <callData>   ERC20.approve(SPENDER : address , AMOUNT : uint256) </callData>
+          <k>          #execute => #halt ...                               </k>
+          <output>     .Bytes   => ?_                                      </output>
+          <statusCode> _        => EVMC_REVERT                             </statusCode>
 
-    //       <account>
-    //         <acctID> ACCTID </acctID>
-    //         <storage> _ACCT_STORAGE </storage>
-    //         ...
-    //       </account>
+          <account>
+            <acctID> CONTRACT_ID </acctID>
+            <storage> _CONTRACT_STORAGE </storage>
+            ...
+          </account>
 
-    //    requires #rangeAddress(OWNER)
-    //     andBool #rangeAddress(SPENDER)
-    //     andBool #rangeUInt(256, AMOUNT)
-    //     andBool (OWNER ==Int 0 orBool SPENDER ==Int 0)
+       requires #rangeAddress(CALLER_ID)
+        andBool #rangeAddress(SPENDER)
+        andBool #rangeUInt(256, AMOUNT)
+        andBool (CALLER_ID ==Int 0 orBool SPENDER ==Int 0)
 ```
 
 ```k
