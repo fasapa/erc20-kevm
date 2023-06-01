@@ -87,7 +87,7 @@ module ERC20-SPEC
 
           <callData>   ERC20.decimals()               </callData>
           <k>          #execute => #halt ...          </k>
-          <output>     .Bytes   => #buf(32, 18)        </output>
+          <output>     .Bytes   => #buf(32, 18)       </output>
           <statusCode> _        => EVMC_SUCCESS       </statusCode>
 
           <account>
@@ -303,61 +303,237 @@ module ERC20-SPEC
         andBool (CALLER_ID ==Int 0 orBool SPENDER ==Int 0)
 ```
 
+### Calling transfer
+
+#### Fabricio's transfer
+
 ```k
-    // claim [transfer]:
-    //       <mode>     NORMAL   </mode>
-    //       <schedule> ISTANBUL </schedule>
+    claim [transfer.fabricio.success]:
+          <mode>     NORMAL   </mode>
+          <schedule> ISTANBUL </schedule>
 
-    //       <callStack> .List                                      </callStack>
-    //       <program>   #binRuntime(ERC20)                         </program>
-    //       <jumpDests> #computeValidJumpDests(#binRuntime(ERC20)) </jumpDests>
-    //       <static>    false                                      </static>
+          <callStack> .List                                      </callStack>
+          <program>   #binRuntime(ERC20)                         </program>
+          <jumpDests> #computeValidJumpDests(#binRuntime(ERC20)) </jumpDests>
+          <static>    false                                      </static>
 
-    //       <id>         CONTRACT_ID => ?_ </id>                   // contract owner
-    //       <caller>     FROM_ID     => ?_ </caller>               // contract caller
-    //       <localMem>   .Bytes      => ?_ </localMem>
-    //       <memoryUsed> 0           => ?_ </memoryUsed>
-    //       <wordStack>  .WordStack  => ?_ </wordStack>
-    //       <pc>         0           => ?_ </pc>
-    //       <gas>        #gas(_VGAS) => ?_ </gas>
-    //       <callValue>  0           => ?_ </callValue>
-    //       <substate> _             => ?_ </substate>
+          <id>         CONTRACT_ID => ?_ </id>                   // contract owner
+          <caller>     FROM_ID     => ?_ </caller>               // contract caller
+          <localMem>   .Bytes      => ?_ </localMem>
+          <memoryUsed> 0           => ?_ </memoryUsed>
+          <wordStack>  .WordStack  => ?_ </wordStack>
+          <pc>         0           => ?_ </pc>
+          <gas>        #gas(_VGAS) => ?_ </gas>
+          <callValue>  0           => ?_ </callValue>
+          <substate> _             => ?_ </substate>
 
-    //       <callData>   ERC20.transfer(TO_ID : address , AMOUNT : uint256) </callData>
-    //       <k>          #execute   => #halt ...        </k>
-    //       <output>     _          => #buf(32, 1)      </output>
-    //       <statusCode> _          => EVMC_SUCCESS     </statusCode>
+          <callData>   ERC20.transfer(TO_ID : address , AMOUNT : uint256) </callData>
+          <k>          #execute   => #halt ...                            </k>
+          <output>     _          => #buf(32, bool2Word(true))            </output>
+          <statusCode> _          => ?_                                   </statusCode>
 
-    //       <accounts>  
-    //         <account>
-    //           <acctID> CONTRACT_ID </acctID>
-    //           <storage> CONTRACT_STORAGE [FROM_BAL_KEY <- (FROM_BALANCE => FROM_BALANCE -Int AMOUNT)] [TO_BAL_KEY <- (TO_BALANCE => TO_BALANCE +Int AMOUNT)] </storage>
-    //           ...
-    //         </account>
-    //         <account>
-    //           <acctID> FROM_ID </acctID>
-    //           <storage> _FROM_STORAGE </storage>
-    //           ...
-    //         </account>
-    //         <account>
-    //           <acctID> TO_ID </acctID>
-    //           <storage> _TO_STORAGE </storage>
-    //           ...
-    //         </account>
-    //       </accounts>
+          <accounts>  
+            <account>
+              <acctID> CONTRACT_ID </acctID>
+              <storage> CONTRACT_STORAGE => CONTRACT_STORAGE [FROM_BAL_KEY <- FROM_BALANCE -Int AMOUNT] [TO_BAL_KEY <- TO_BALANCE +Int AMOUNT] </storage>
+              ...
+            </account>
+            <account>
+              <acctID> FROM_ID </acctID>
+              <storage> _FROM_STORAGE </storage>
+              ...
+            </account>
+            <account>
+              <acctID> TO_ID </acctID>
+              <storage> _TO_STORAGE </storage>
+              ...
+            </account>
+          </accounts>
 
-    //    requires #loc(ERC20._balances[FROM_ID]) ==Int FROM_BAL_KEY andBool #lookup(CONTRACT_STORAGE, FROM_BAL_KEY) ==Int FROM_BALANCE 
-    //     andBool #loc(ERC20._balances[TO_ID]) ==Int TO_BAL_KEY  andBool #lookup(CONTRACT_STORAGE, TO_BAL_KEY) ==Int TO_BALANCE
-    //     andBool AMOUNT <=Int FROM_BALANCE
-    //     andBool #rangeUInt(256, TO_BALANCE +Int AMOUNT)
-    //     andBool #rangeAddress(CONTRACT_ID)
-    //     andBool #rangeAddress(FROM_ID)
-    //     andBool #rangeAddress(TO_ID)
-    //     andBool #rangeUInt(256, AMOUNT)
-    //     andBool CONTRACT_ID =/=Int 0
-    //     andBool FROM_ID =/=Int 0
-    //     andBool TO_ID =/=Int 0
+       requires FROM_BAL_KEY ==Int #loc(ERC20._balances[FROM_ID]) andBool FROM_BALANCE ==Int #lookup(CONTRACT_STORAGE, FROM_BAL_KEY)
+        andBool TO_BAL_KEY ==Int #loc(ERC20._balances[TO_ID]) andBool TO_BALANCE ==Int #lookup(CONTRACT_STORAGE, TO_BAL_KEY)
+        andBool FROM_BALANCE >=Int AMOUNT
+        //andBool #rangeUInt(256, TO_BALANCE +Int AMOUNT)
+        andBool (TO_BALANCE <=Int pow256 -Int AMOUNT)
+        //andBool #rangeUInt(256, FROM_BALANCE -Int AMOUNT)
+        andBool #rangeAddress(CONTRACT_ID)
+        andBool #rangeAddress(FROM_ID)
+        andBool #rangeAddress(TO_ID)
+        andBool #rangeUInt(256, AMOUNT)
+        andBool CONTRACT_ID =/=Int 0
+        andBool FROM_ID =/=Int 0
+        andBool TO_ID =/=Int 0
+        //andBool FROM_ID =/=Int TO_ID
+       //ensures  #lookup(CONTRACT_STORAGE, TO_BAL_KEY) >=Int TO_BALANCE
+       // andBool #lookup(CONTRACT_STORAGE, FROM_BAL_KEY) <=Int FROM_BALANCE 
 ```
+
+```k
+    claim [transfer.fabricio.revert]:
+          <mode>     NORMAL   </mode>
+          <schedule> ISTANBUL </schedule>
+
+          <callStack> .List                                      </callStack>
+          <program>   #binRuntime(ERC20)                         </program>
+          <jumpDests> #computeValidJumpDests(#binRuntime(ERC20)) </jumpDests>
+          <static>    false                                      </static>
+
+          <id>         CONTRACT_ID => ?_ </id>                   // contract owner
+          <caller>     FROM_ID     => ?_ </caller>               // contract caller
+          <localMem>   .Bytes      => ?_ </localMem>
+          <memoryUsed> 0           => ?_ </memoryUsed>
+          <wordStack>  .WordStack  => ?_ </wordStack>
+          <pc>         0           => ?_ </pc>
+          <gas>        #gas(_VGAS) => ?_ </gas>
+          <callValue>  0           => ?_ </callValue>
+          <substate> _             => ?_ </substate>
+
+          <callData>   ERC20.transfer(TO_ID : address , AMOUNT : uint256) </callData>
+          <k>          #execute   => #halt ...                            </k>
+          <output>     _          => ?_                                   </output>
+          <statusCode> _          => EVMC_REVERT                          </statusCode>
+
+          <accounts>  
+            <account>
+              <acctID> CONTRACT_ID </acctID>
+              <storage> CONTRACT_STORAGE </storage>
+              ...
+            </account>
+            <account>
+              <acctID> FROM_ID </acctID>
+              <storage> _FROM_STORAGE </storage>
+              ...
+            </account>
+            <account>
+              <acctID> TO_ID </acctID>
+              <storage> _TO_STORAGE </storage>
+              ...
+            </account>
+          </accounts>
+
+       requires FROM_BAL_KEY ==Int #loc(ERC20._balances[FROM_ID]) andBool FROM_BALANCE ==Int #lookup(CONTRACT_STORAGE, FROM_BAL_KEY)
+        andBool TO_BAL_KEY ==Int #loc(ERC20._balances[TO_ID]) andBool TO_BALANCE ==Int #lookup(CONTRACT_STORAGE, TO_BAL_KEY)
+        andBool #rangeAddress(CONTRACT_ID)
+        andBool #rangeAddress(FROM_ID)
+        andBool #rangeAddress(TO_ID)
+        andBool #rangeUInt(256, AMOUNT)
+        andBool CONTRACT_ID =/=Int 0
+        andBool FROM_ID =/=Int 0
+        andBool TO_ID =/=Int 0
+        andBool (FROM_BALANCE <Int AMOUNT orBool (notBool #rangeUInt(256, TO_BALANCE +Int AMOUNT)) orBool (notBool #rangeUInt(256, FROM_BALANCE -Int AMOUNT)))
+```
+
+#### OpenZeppelin's transfer
+
+```k
+claim [transfer.zeppelin.success]:
+      <mode>     NORMAL   </mode>
+      <schedule> ISTANBUL </schedule>
+      <callStack> .List                                      </callStack>
+      <program>   #binRuntime(ERC20)                         </program>
+      <jumpDests> #computeValidJumpDests(#binRuntime(ERC20)) </jumpDests>
+      <static>    false                                      </static>
+      <id>         CONTRACT_ID => ?_ </id>                   // contract owner
+      <caller>     FROM_ID     => ?_ </caller>               // contract caller
+      <localMem>   .Bytes      => ?_ </localMem>
+      <memoryUsed> 0           => ?_ </memoryUsed>
+      <wordStack>  .WordStack  => ?_ </wordStack>
+      <pc>         0           => ?_ </pc>
+      <gas>        #gas(_VGAS) => ?_ </gas>
+      <callValue>  0           => ?_ </callValue>
+      <substate> _             => ?_ </substate>
+      <callData>   ERC20.transfer(TO_ID : address , AMOUNT : uint256) </callData>
+      <k>          #execute   => #halt ...                            </k>
+      <output>     _          => #buf(32, bool2Word(true))            </output>
+      <statusCode> _          => EVMC_SUCCESS                         </statusCode>
+      <accounts>  
+        <account>
+          <acctID> CONTRACT_ID </acctID>
+          <storage> CONTRACT_STORAGE => CONTRACT_STORAGE [FROM_BAL_KEY <- FROM_BALANCE -Int AMOUNT] [TO_BAL_KEY <- TO_BALANCE +Int AMOUNT] </storage>
+          ...
+        </account>
+        <account>
+          <acctID> FROM_ID </acctID>
+          <storage> _FROM_STORAGE </storage>
+          ...
+        </account>
+        <account>
+          <acctID> TO_ID </acctID>
+          <storage> _TO_STORAGE </storage>
+          ...
+        </account>
+      </accounts>
+   requires FROM_BAL_KEY ==Int #loc(ERC20._balances[FROM_ID]) andBool FROM_BALANCE ==Int #lookup(CONTRACT_STORAGE, FROM_BAL_KEY)
+    andBool TO_BAL_KEY ==Int #loc(ERC20._balances[TO_ID]) andBool TO_BALANCE ==Int #lookup(CONTRACT_STORAGE, TO_BAL_KEY)
+    andBool SUPPLY_KEY ==Int #loc(ERC20._totalSupply) andBool SUPPLY ==Int #lookup(CONTRACT_STORAGE, SUPPLY_KEY)
+    andBool (FROM_BALANCE +Int TO_BALANCE <=Int SUPPLY)
+    andBool FROM_BALANCE >=Int AMOUNT
+    andBool #rangeUInt(256, AMOUNT)
+    andBool #rangeAddress(CONTRACT_ID)
+    andBool #rangeAddress(FROM_ID)
+    andBool #rangeAddress(TO_ID)
+    andBool CONTRACT_ID =/=Int 0
+    andBool FROM_ID =/=Int 0
+    andBool TO_ID =/=Int 0
+   ensures  #lookup(CONTRACT_STORAGE, SUPPLY_KEY) ==Int SUPPLY
+    andBool (#lookup(CONTRACT_STORAGE, FROM_BAL_KEY) +Int #lookup(CONTRACT_STORAGE, TO_BAL_KEY) ==Int FROM_BALANCE +Int TO_BALANCE)
+```
+
+```k
+    claim [transfer.zeppelin.revert]:
+          <mode>     NORMAL   </mode>
+          <schedule> ISTANBUL </schedule>
+
+          <callStack> .List                                      </callStack>
+          <program>   #binRuntime(ERC20)                         </program>
+          <jumpDests> #computeValidJumpDests(#binRuntime(ERC20)) </jumpDests>
+          <static>    false                                      </static>
+
+          <id>         CONTRACT_ID => ?_ </id>                   // contract owner
+          <caller>     FROM_ID     => ?_ </caller>               // contract caller
+          <localMem>   .Bytes      => ?_ </localMem>
+          <memoryUsed> 0           => ?_ </memoryUsed>
+          <wordStack>  .WordStack  => ?_ </wordStack>
+          <pc>         0           => ?_ </pc>
+          <gas>        #gas(_VGAS) => ?_ </gas>
+          <callValue>  0           => ?_ </callValue>
+          <substate> _             => ?_ </substate>
+
+          <callData>   ERC20.transfer(TO_ID : address , AMOUNT : uint256) </callData>
+          <k>          #execute   => #halt ...                            </k>
+          <output>     _          => ?_                                   </output>
+          <statusCode> _          => EVMC_REVERT                          </statusCode>
+
+          <accounts>  
+            <account>
+              <acctID> CONTRACT_ID </acctID>
+              <storage> CONTRACT_STORAGE </storage>
+              ...
+            </account>
+            <account>
+              <acctID> FROM_ID </acctID>
+              <storage> _FROM_STORAGE </storage>
+              ...
+            </account>
+            <account>
+              <acctID> TO_ID </acctID>
+              <storage> _TO_STORAGE </storage>
+              ...
+            </account>
+          </accounts>
+
+       requires FROM_BAL_KEY ==Int #loc(ERC20._balances[FROM_ID]) andBool FROM_BALANCE ==Int #lookup(CONTRACT_STORAGE, FROM_BAL_KEY)
+        andBool TO_BAL_KEY ==Int #loc(ERC20._balances[TO_ID]) andBool TO_BALANCE ==Int #lookup(CONTRACT_STORAGE, TO_BAL_KEY)
+        andBool #rangeAddress(CONTRACT_ID)
+        andBool #rangeAddress(FROM_ID)
+        andBool #rangeAddress(TO_ID)
+        andBool #rangeUInt(256, AMOUNT)
+        andBool CONTRACT_ID =/=Int 0
+        andBool FROM_ID =/=Int 0
+        andBool TO_ID =/=Int 0
+        andBool (FROM_BALANCE <Int AMOUNT orBool (notBool #rangeUInt(256, TO_BALANCE +Int AMOUNT)) orBool (notBool #rangeUInt(256, FROM_BALANCE -Int AMOUNT)))
+```
+
 
 ```k
 endmodule

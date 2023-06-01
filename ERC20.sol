@@ -223,8 +223,6 @@ contract ERC20 is Context, IERC20, IERC20Metadata {
         require(from != address(0), "ERC20: transfer from the zero address");
         require(to != address(0), "ERC20: transfer to the zero address");
 
-        _beforeTokenTransfer(from, to, amount);
-
         uint256 fromBalance = _balances[from];
         require(fromBalance >= amount, "ERC20: transfer amount exceeds balance");
         unchecked {
@@ -233,11 +231,21 @@ contract ERC20 is Context, IERC20, IERC20Metadata {
             // decrementing then incrementing.
             _balances[to] += amount;
         }
-
         emit Transfer(from, to, amount);
-
-        _afterTokenTransfer(from, to, amount);
     }
+    
+    function _transfer_fabricio(address from, address to, uint256 amount) internal {
+        require(from != address(0), "ERC20: transfer from the zero address");
+        require(to != address(0), "ERC20: transfer to the zero address");
+        uint256 toBalance   = _balances[to];
+        uint256 fromBalance = _balances[from];
+        require(fromBalance >= amount, "ERC20: transfer amount exceeds balance");
+        uint256 fromBalanceUpdated = fromBalance - amount;
+        uint256 toBalanceUpdated   = toBalance   + amount;
+        _balances[from] = fromBalanceUpdated;
+        _balances[to]   = toBalanceUpdated;
+    }
+
 
     /** @dev Creates `amount` tokens and assigns them to `account`, increasing
      * the total supply.
